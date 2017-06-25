@@ -15,7 +15,12 @@
     //define product model
     var Contact = Backbone.Model.extend({
         defaults: {
-            photo: "img/placeholder.png"
+            photo: "img/placeholder.png",
+            name: "",
+            address: "",
+            tel: "",
+            email: "",
+            type: ""
         }
     });
 
@@ -33,6 +38,26 @@
         render: function () {
             this.$el.html(this.template(this.model.toJSON()));
             return this;
+        },
+
+        events: {
+            "click button.delete": "deleteContact"
+        },
+
+        //delete a contact
+        deleteContact: function () {
+            var removedType = this.model.get("type").toLowerCase();
+
+            //remove model
+            this.model.destroy();
+
+            //remove view from page
+            this.remove();
+
+            //re-render select if no more of deleted type
+            if (_.indexOf(directory.getTypes(), removedType) === -1) {
+                directory.$el.find("#filter select").children("[value='" + removedType + "']").remove();
+            }
         }
     });
 
@@ -44,10 +69,12 @@
             this.collection = new Directory(contacts);
 
             this.render();
-            this.$el.find("#filter").append(this.createSelect()); 
+            this.$el.find("#filter").append(this.createSelect());
 
             this.on("change:filterType", this.filterByType, this);
             this.collection.on("reset", this.render, this);
+            this.collection.on("add", this.renderContact, this);
+            this.collection.on("remove", this.removeContact, this);
         },
 
         render: function () {
@@ -66,18 +93,21 @@
         },
 
         getTypes: function () {
-            return _.uniq(this.collection.pluck("type"));
+            return _.uniq(this.collection.pluck("type"), false, function (type) {
+                return type.toLowerCase();
+            });
         },
 
         createSelect: function () {
-            var select = $("<select/>", {
+            var filter = this.$el.find("#filter"),
+                select = $("<select/>", {
                     html: "<option value='all'>All</option>"
                 });
 
             _.each(this.getTypes(), function (item) {
                 var option = $("<option/>", {
-                    value: item,
-                    text: item
+                    value: item.toLowerCase(),
+                    text: item.toLowerCase()
                 }).appendTo(select);
             });
 
@@ -86,7 +116,9 @@
 
         //add ui events
         events: {
-            "change #filter select": "setFilter"
+            "change #filter select": "setFilter",
+            "click #add": "addContact",
+            "click #showForm": "showForm"
         },
 
         //Set filter property and fire change event
@@ -105,13 +137,59 @@
 
                 var filterType = this.filterType,
                     filtered = _.filter(this.collection.models, function (item) {
-                        return item.get("type") === filterType;
+                        return item.get("type").toLowerCase() === filterType;
                     });
 
                 this.collection.reset(filtered);
 
                 contactsRouter.navigate("filter/" + filterType);
             }
+        },
+
+        //add a new contact
+        addContact: function (e) {
+            e.preventDefault();
+
+
+            var formData = {};
+            $("#addContact").children("input").each(function (i, el) {
+                if ($(el).val() !== "") {
+                    formData[el.id] = $(el).val();
+                }
+            });
+
+            //update data store
+            contacts.push(formData);
+
+            //re-render select if new type is unknown
+            if (_.indexOf(this.getTypes(), formData.type) === -1) {
+                this.collection.add(new Contact(formData));
+                this.$el.find("#filter").find("select").remove().end().append(this.createSelect());
+            } else {
+                this.collection.add(new Contact(formData));
+            }
+        },
+
+        removeContact: function (removedModel) {
+            var removed = removedModel.attributes;
+
+            //if model acquired default photo property, remove it
+            if (removed.photo === "/img/placeholder.png") {
+                delete removed.photo;
+            }
+
+            //remove from contacts array
+            _.each(contacts, function (contact) {
+
+                if (_.isEqual(contact, removed)) {
+                    contacts.splice(_.indexOf(contacts, contact), 1);
+                }
+            });
+
+        },
+
+        showForm: function () {
+            this.$el.find("#addContact").slideToggle();
         }
     });
 
